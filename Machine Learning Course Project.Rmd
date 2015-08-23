@@ -1,0 +1,155 @@
+---
+title: "Machine Learning Course Project Writeup"
+author: "Bankbintje"
+date: "21 augustus 2015"
+output: html_document
+---
+# Summary
+
+The goal of this project is to build a model that predicts the manner in which persons performed barbell lifts, based on data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. The model is built using the random forest algorithm. Rationale for using RF was to test the claim that _"Random forests are usually one of the two top performing algorithms along with boosting in prediction contests"_; I wanted to see how well this algorithm actually performs. Cross validation was done by splitting pml-training.csv into a training- and test set. The model was built on the training set and evaluated againts the test set using confusionMatrix. ConfusionMatrix will produce the accuracy of the final model and the out of sample error.
+
+# Data
+First things first: clean the environment, set seed and load libraries
+```{r warning=FALSE}
+dev.off()
+rm(list=ls())
+library(ggplot2)
+library(caret)
+library(data.table) 
+library(parallel)
+library(doParallel)
+set.seed(11)
+```
+### Load the data
+Load the test- and trainingdata directly from internet. Load the data into data frames as caret does not handle data tables wel.. While loading the data with read.csv, the values _'NA'_, _''_ and _'#DIV/0!'_ are treated as NA values. 
+```{r}
+## set the file URLs
+fileUrl.training<-"https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+fileUrl.testing<-"https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+## check if the download files exist. Download only if they don't exist 
+if(!file.exists("./pml-training.csv")) {download.file(fileUrl.training,destfile="pml-training.csv",method="curl")}
+if(!file.exists("./pml-testing.csv")) {download.file(fileUrl.testing,destfile="pml-testing.csv", method="curl")}
+
+## Load the data into data frames
+df.training <- read.csv(file="pml-training.csv", header=TRUE, as.is = TRUE, stringsAsFactors = FALSE, sep=',', na.strings=c('NA','','#DIV/0!'))
+df.testing <- read.csv(file="pml-testing.csv", header=TRUE, as.is = TRUE, stringsAsFactors = FALSE, sep=',', na.strings=c('NA','','#DIV/0!'))
+```
+
+### Exploring & Cleaning the data
+There are some issues in the dataset
+
+1. The variable "classe" is missing from the trainingset. Add this variable.
+
+2. Some variables contain a lot of N/A values. Variables with more than 50% N/A values are removed from the dataset.
+
+3. The dataset contains variables that are not used for building the model: _"In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants."_ Only the relevant variables will be selected.
+
+4. The resulting set has numerics and integers. All integers are converted to numeric.
+
+5. Check for NearZeroVariance & ZeroVariance. Remove any variables with nzv.
+
+```{r}
+## 1. Add the classe variable to the testing set!
+df.testing$classe<-NA
+## 2. Detect columns with at least 50% NA's
+na.cols <- apply(is.na(df.training), 2, sum)/dim(df.training)[1]>0.5
+## 3. Select only relevant columns
+relevant.cols <- !na.cols & grepl("belt|[^(fore)]arm|dumbbell|forearm|classe", names(df.training))
+## Get the column names of the selected columns
+selected.cols <- names(df.training)[relevant.cols]
+# Selected only relevant cols & cols with than 50%
+df.training<- df.training[,selected.cols]
+df.testing<- df.testing[,selected.cols]
+## 4. Transform all integers to numeric values
+integer.cols <- which(lapply(df.training, class) %in% "integer")
+df.training[,integer.cols]<-sapply(df.training[,integer.cols],as.numeric)
+df.testing[,integer.cols]<-sapply(df.testing[,integer.cols],as.numeric)
+## Make a list of numeric columns, it will be used later on..
+numeric.cols <- which(lapply(df.training, class) %in% "numeric")
+## Check for NZV
+nzv.testing <- nearZeroVar(df.training, saveMetrics=TRUE)
+nzv.testing
+```
+Data is clean and contains no variables with (near) zero variance.
+
+### Preprocess Data
+
+The data is normalized
+```{r}
+df.training.csm <- preProcess(df.training[, numeric.cols], method = c("center","scale","medianImpute"))
+df.training.norm <- predict(df.training.csm, df.training[, numeric.cols])
+df.training.norm$classe <- df.training$classe
+df.testing.norm <- predict(df.training.csm, df.testing[, numeric.cols])
+df.testing.norm$classe <- df.testing$classe
+```
+
+# Model
+
+###Create Training & Testing set
+Split _pml-training.csv_ into a test- and trainingset. Use _pml-testing.csv_ only for predicting the outcome, not for validating the model.
+```{r}
+inTrain <- createDataPartition(df.training.norm$classe, p=0.7, list=FALSE)
+training<-df.training.norm[inTrain,]
+testing<-df.training.norm[-inTrain,]
+predicting <- df.testing.norm
+# Convert "classe" variable to factor
+training$classe <- as.factor(training$classe)
+testing$classe <- as.factor(testing$classe)
+predicting$classe <- as.factor(predicting$classe)
+```
+
+### Train the model
+Set the parameters for calling _train_
+```{r}
+trControl <- trainControl(classProbs=TRUE,
+                     savePredictions=TRUE,
+                     allowParallel=TRUE)
+method <- "rf"
+```
+
+```{r}
+## Create a cluster
+cluster <- makeCluster(detectCores() - 1)
+registerDoParallel(cluster)
+## 
+fit.model <- train(classe ~ ., data=training, method=method,trControl = trControl)
+stopCluster(cluster)
+```
+Display the results of the model
+```{r}
+fit.model
+```
+Display the final model
+```{r}
+fit.model$finalModel
+```
+Estimate of the errorrate appears to be less than 1%....
+
+### Apply the model to the testing dataset
+Use the confusion matrix to crossvalidate the results:
+```{r}
+testingPred <- predict(fit.model, testing)
+confusionMatrix(testingPred, testing$classe)
+```
+Accuracy is above 99%, looks like a usable model for predicting outcomes.
+
+### Predict Outcomes
+
+Prediction of the outcomes for "pml-testing.csv" using the model:
+```{r}
+predictingPred <- predict(fit.model, predicting)
+predictingPred
+```
+
+# Write Output
+```{r}
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+
+pml_write_files(predictingPred)
+```
