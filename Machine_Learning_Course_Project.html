@@ -69,12 +69,7 @@ img {
 
 <div id="summary" class="section level1">
 <h1>Summary</h1>
-<p>The goal of this project is to build a model that predicts the manner in which persons performed barbell lifts, based on data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants.</p>
-<p>Random forests are usually one of the two top performing algorithms along with boosting in prediction contests.</p>
-<p>Do the authors describe what they expect the out of sample error to be and estimate the error appropriately with cross-validation?</p>
-<p>More information is available from the website here: <a href="http://groupware.les.inf.puc-rio.br/har">http://groupware.les.inf.puc-rio.br/har</a> (see the section on the Weight Lifting Exercise Dataset).</p>
-<p>they did the exercise. This is the “classe” variable in the training set. You may use any of the other variables to predict with. You should create a report describing how you built your model, how you used cross validation, what you think the expected out of sample error is, and why you made the choices you did. You will also use your prediction model to predict 20 different test cases.</p>
-<p>In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways.</p>
+<p>The goal of this project is to build a model that predicts the manner in which persons performed barbell lifts, based on data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. The model is built using the random forest algorithm. Rationale for using RF was to test the claim that <em>“Random forests are usually one of the two top performing algorithms along with boosting in prediction contests”</em>; I wanted to see how well this algorithm actually performs. Cross validation was done by splitting pml-training.csv into a training- and test set. The model was built on the training set and evaluated against the test set using confusionMatrix. ConfusionMatrix will produce the accuracy of the final model and the out of sample error.</p>
 </div>
 <div id="data" class="section level1">
 <h1>Data</h1>
@@ -86,29 +81,34 @@ img {
 library(ggplot2)
 library(caret)</code></pre>
 <pre><code>## Loading required package: lattice</code></pre>
-<pre class="r"><code>library(data.table) 
-library(parallel)
+<pre class="r"><code>library(parallel)
 library(doParallel)</code></pre>
 <pre><code>## Loading required package: foreach
 ## Loading required package: iterators</code></pre>
 <pre class="r"><code>set.seed(11)</code></pre>
-<div id="load-the-data" class="section level2">
-<h2>Load the data</h2>
-<p>Load the test- and trainingdata directly from internet. Load the data into data frames as caret does not handle data tables wel.. While loading the data with read.csv, the values <em>‘NA’</em>, <em>’’</em> and <em>‘#DIV/0!’</em> are treated as NA values.</p>
+<div id="load-the-data" class="section level3">
+<h3>Load the data</h3>
+<p>Load the test- and trainingdata directly from internet. Load the data into data frames as caret does not handle data tables well.. While loading the data with read.csv, the values <em>‘NA’</em>, <em>’’</em> and <em>‘#DIV/0!’</em> are treated as NA values.</p>
 <pre class="r"><code>## set the file URLs
 fileUrl.training&lt;-&quot;https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv&quot;
 fileUrl.testing&lt;-&quot;https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv&quot;
 ## check if the download files exist. Download only if they don't exist 
 if(!file.exists(&quot;./pml-training.csv&quot;)) {download.file(fileUrl.training,destfile=&quot;pml-training.csv&quot;,method=&quot;curl&quot;)}
 if(!file.exists(&quot;./pml-testing.csv&quot;)) {download.file(fileUrl.testing,destfile=&quot;pml-testing.csv&quot;, method=&quot;curl&quot;)}
-
 ## Load the data into data frames
 df.training &lt;- read.csv(file=&quot;pml-training.csv&quot;, header=TRUE, as.is = TRUE, stringsAsFactors = FALSE, sep=',', na.strings=c('NA','','#DIV/0!'))
 df.testing &lt;- read.csv(file=&quot;pml-testing.csv&quot;, header=TRUE, as.is = TRUE, stringsAsFactors = FALSE, sep=',', na.strings=c('NA','','#DIV/0!'))</code></pre>
 </div>
-<div id="exploring-cleaning-the-data" class="section level2">
-<h2>Exploring &amp; Cleaning the data</h2>
-<p>There are some issues in the dataset 1. The variable “classe” is missing from the trainingset. Add this variable. 2. Some variables contain a lot of N/A values. Variables with more than 50% N/A values are removed from the dataset. 3. The dataset contains variables that are not used for building the model: <em>“In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants.”</em> Only the relevant variables will be selected. 4. The resulting set has numerics and integers. All integers are converted to numeric.</p>
+<div id="exploring-cleaning-the-data" class="section level3">
+<h3>Exploring &amp; Cleaning the data</h3>
+<p>There are some issues in the dataset</p>
+<ol style="list-style-type: decimal">
+<li><p>The variable “classe” is missing from the trainingset. Add this variable.</p></li>
+<li><p>Some variables contain a lot of N/A values. Variables with more than 50% N/A values are removed from the dataset.</p></li>
+<li><p>The dataset contains variables that are not used for building the model: <em>“In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants.”</em> Only the relevant variables will be selected.</p></li>
+<li><p>The resulting set has numerics and integers. All integers are converted to numeric.</p></li>
+<li><p>Check for NearZeroVariance &amp; ZeroVariance. Remove any variables with nzv.</p></li>
+</ol>
 <pre class="r"><code>## 1. Add the classe variable to the testing set!
 df.testing$classe&lt;-NA
 ## 2. Detect columns with at least 50% NA's
@@ -125,24 +125,80 @@ integer.cols &lt;- which(lapply(df.training, class) %in% &quot;integer&quot;)
 df.training[,integer.cols]&lt;-sapply(df.training[,integer.cols],as.numeric)
 df.testing[,integer.cols]&lt;-sapply(df.testing[,integer.cols],as.numeric)
 ## Make a list of numeric columns, it will be used later on..
-numeric.cols &lt;- which(lapply(df.training, class) %in% &quot;numeric&quot;)</code></pre>
+numeric.cols &lt;- which(lapply(df.training, class) %in% &quot;numeric&quot;)
+## 5. Check for NZV
+nzv.testing &lt;- nearZeroVar(df.training, saveMetrics=TRUE)
+nzv.testing</code></pre>
+<pre><code>##                      freqRatio percentUnique zeroVar   nzv
+## roll_belt             1.101904     6.7781062   FALSE FALSE
+## pitch_belt            1.036082     9.3772296   FALSE FALSE
+## yaw_belt              1.058480     9.9734991   FALSE FALSE
+## total_accel_belt      1.063160     0.1477933   FALSE FALSE
+## gyros_belt_x          1.058651     0.7134849   FALSE FALSE
+## gyros_belt_y          1.144000     0.3516461   FALSE FALSE
+## gyros_belt_z          1.066214     0.8612782   FALSE FALSE
+## accel_belt_x          1.055412     0.8357966   FALSE FALSE
+## accel_belt_y          1.113725     0.7287738   FALSE FALSE
+## accel_belt_z          1.078767     1.5237998   FALSE FALSE
+## magnet_belt_x         1.090141     1.6664968   FALSE FALSE
+## magnet_belt_y         1.099688     1.5187035   FALSE FALSE
+## magnet_belt_z         1.006369     2.3290184   FALSE FALSE
+## roll_arm             52.338462    13.5256345   FALSE FALSE
+## pitch_arm            87.256410    15.7323412   FALSE FALSE
+## yaw_arm              33.029126    14.6570176   FALSE FALSE
+## total_accel_arm       1.024526     0.3363572   FALSE FALSE
+## gyros_arm_x           1.015504     3.2769341   FALSE FALSE
+## gyros_arm_y           1.454369     1.9162165   FALSE FALSE
+## gyros_arm_z           1.110687     1.2638875   FALSE FALSE
+## accel_arm_x           1.017341     3.9598410   FALSE FALSE
+## accel_arm_y           1.140187     2.7367241   FALSE FALSE
+## accel_arm_z           1.128000     4.0362858   FALSE FALSE
+## magnet_arm_x          1.000000     6.8239731   FALSE FALSE
+## magnet_arm_y          1.056818     4.4439914   FALSE FALSE
+## magnet_arm_z          1.036364     6.4468454   FALSE FALSE
+## roll_dumbbell         1.022388    84.2065029   FALSE FALSE
+## pitch_dumbbell        2.277372    81.7449801   FALSE FALSE
+## yaw_dumbbell          1.132231    83.4828254   FALSE FALSE
+## total_accel_dumbbell  1.072634     0.2191418   FALSE FALSE
+## gyros_dumbbell_x      1.003268     1.2282132   FALSE FALSE
+## gyros_dumbbell_y      1.264957     1.4167771   FALSE FALSE
+## gyros_dumbbell_z      1.060100     1.0498420   FALSE FALSE
+## accel_dumbbell_x      1.018018     2.1659362   FALSE FALSE
+## accel_dumbbell_y      1.053061     2.3748853   FALSE FALSE
+## accel_dumbbell_z      1.133333     2.0894914   FALSE FALSE
+## magnet_dumbbell_x     1.098266     5.7486495   FALSE FALSE
+## magnet_dumbbell_y     1.197740     4.3012945   FALSE FALSE
+## magnet_dumbbell_z     1.020833     3.4451126   FALSE FALSE
+## roll_forearm         11.589286    11.0895933   FALSE FALSE
+## pitch_forearm        65.983051    14.8557741   FALSE FALSE
+## yaw_forearm          15.322835    10.1467740   FALSE FALSE
+## total_accel_forearm   1.128928     0.3567424   FALSE FALSE
+## gyros_forearm_x       1.059273     1.5187035   FALSE FALSE
+## gyros_forearm_y       1.036554     3.7763735   FALSE FALSE
+## gyros_forearm_z       1.122917     1.5645704   FALSE FALSE
+## accel_forearm_x       1.126437     4.0464784   FALSE FALSE
+## accel_forearm_y       1.059406     5.1116094   FALSE FALSE
+## accel_forearm_z       1.006250     2.9558659   FALSE FALSE
+## magnet_forearm_x      1.012346     7.7667924   FALSE FALSE
+## magnet_forearm_y      1.246914     9.5403119   FALSE FALSE
+## magnet_forearm_z      1.000000     8.5771073   FALSE FALSE
+## classe                1.469581     0.0254816   FALSE FALSE</code></pre>
+<p>Data is clean and contains no variables with (near) zero variance.</p>
+</div>
+<div id="preprocess-data" class="section level3">
+<h3>Preprocess Data</h3>
+<p>The data is normalized</p>
+<pre class="r"><code>df.training.csm &lt;- preProcess(df.training[, numeric.cols], method = c(&quot;center&quot;,&quot;scale&quot;,&quot;medianImpute&quot;))
+df.training.norm &lt;- predict(df.training.csm, df.training[, numeric.cols])
+df.training.norm$classe &lt;- df.training$classe
+df.testing.norm &lt;- predict(df.training.csm, df.testing[, numeric.cols])
+df.testing.norm$classe &lt;- df.testing$classe</code></pre>
 </div>
 </div>
 <div id="model" class="section level1">
 <h1>Model</h1>
-<div id="preprocess-data" class="section level2">
-<h2>Preprocess Data</h2>
-<p>The data is normalized and missing values are imputed Centering &amp; Scaling</p>
-<pre class="r"><code>##
-df.training.csm &lt;- preProcess(df.training[, numeric.cols], method = c(&quot;center&quot;,&quot;scale&quot;,&quot;medianImpute&quot;))
-df.training.norm &lt;- predict(df.training.csm, df.training[, numeric.cols])
-df.training.norm$classe &lt;- df.training$classe
-
-df.testing.norm &lt;- predict(df.training.csm, df.testing[, numeric.cols])
-df.testing.norm$classe &lt;- df.testing$classe</code></pre>
-</div>
-<div id="create-training-testing-set" class="section level2">
-<h2>Create Training &amp; Testing set</h2>
+<div id="create-training-testing-set" class="section level3">
+<h3>Create Training &amp; Testing set</h3>
 <p>Split <em>pml-training.csv</em> into a test- and trainingset. Use <em>pml-testing.csv</em> only for predicting the outcome, not for validating the model.</p>
 <pre class="r"><code>inTrain &lt;- createDataPartition(df.training.norm$classe, p=0.7, list=FALSE)
 training&lt;-df.training.norm[inTrain,]
@@ -153,17 +209,18 @@ training$classe &lt;- as.factor(training$classe)
 testing$classe &lt;- as.factor(testing$classe)
 predicting$classe &lt;- as.factor(predicting$classe)</code></pre>
 </div>
-<div id="train-the-model" class="section level2">
-<h2>Train the model</h2>
-<p>Set the parameters for calling <em>train</em></p>
+<div id="train-the-model" class="section level3">
+<h3>Train the model</h3>
+<p>Set the parameters for calling <em>“train”</em></p>
 <pre class="r"><code>trControl &lt;- trainControl(classProbs=TRUE,
                      savePredictions=TRUE,
                      allowParallel=TRUE)
 method &lt;- &quot;rf&quot;</code></pre>
+<p>Fit the model</p>
 <pre class="r"><code>## Create a cluster
 cluster &lt;- makeCluster(detectCores() - 1)
 registerDoParallel(cluster)
-## 
+## Fit the model
 fit.model &lt;- train(classe ~ ., data=training, method=method,trControl = trControl)</code></pre>
 <pre><code>## Loading required package: randomForest
 ## randomForest 4.6-10
@@ -183,48 +240,34 @@ fit.model &lt;- train(classe ~ ., data=training, method=method,trControl = trCon
 ## Resampling results across tuning parameters:
 ## 
 ##   mtry  Accuracy   Kappa      Accuracy SD  Kappa SD   
-##    2    0.9877924  0.9845529  0.001779935  0.002255420
-##   27    0.9877493  0.9844991  0.001480804  0.001878527
-##   52    0.9780122  0.9721800  0.004208649  0.005317716
+##    2    0.9878022  0.9845653  0.001762492  0.002233593
+##   27    0.9874803  0.9841589  0.001581653  0.002003606
+##   52    0.9777507  0.9718492  0.004172736  0.005273997
 ## 
 ## Accuracy was used to select the optimal model using  the largest value.
 ## The final value used for the model was mtry = 2.</code></pre>
+<p>Display the final model</p>
+<pre class="r"><code>fit.model$finalModel</code></pre>
+<pre><code>## 
+## Call:
+##  randomForest(x = x, y = y, mtry = param$mtry) 
+##                Type of random forest: classification
+##                      Number of trees: 500
+## No. of variables tried at each split: 2
+## 
+##         OOB estimate of  error rate: 0.75%
+## Confusion matrix:
+##      A    B    C    D    E  class.error
+## A 3904    2    0    0    0 0.0005120328
+## B   19 2631    8    0    0 0.0101580135
+## C    0   22 2370    4    0 0.0108514190
+## D    0    1   41 2209    1 0.0190941385
+## E    0    0    0    5 2520 0.0019801980</code></pre>
+<p>Estimate of the errorrate appears to be less than 1%….</p>
 </div>
-<div id="apply-the-model-to-the-training-testing-dataset" class="section level2">
-<h2>Apply the model to the training &amp; testing dataset</h2>
-<pre class="r"><code>trainingPred &lt;- predict(fit.model, training)
-confusionMatrix(trainingPred, training$classe)</code></pre>
-<pre><code>## Confusion Matrix and Statistics
-## 
-##           Reference
-## Prediction    A    B    C    D    E
-##          A 3906    0    0    0    0
-##          B    0 2658    0    0    0
-##          C    0    0 2396    0    0
-##          D    0    0    0 2252    0
-##          E    0    0    0    0 2525
-## 
-## Overall Statistics
-##                                      
-##                Accuracy : 1          
-##                  95% CI : (0.9997, 1)
-##     No Information Rate : 0.2843     
-##     P-Value [Acc &gt; NIR] : &lt; 2.2e-16  
-##                                      
-##                   Kappa : 1          
-##  Mcnemar's Test P-Value : NA         
-## 
-## Statistics by Class:
-## 
-##                      Class: A Class: B Class: C Class: D Class: E
-## Sensitivity            1.0000   1.0000   1.0000   1.0000   1.0000
-## Specificity            1.0000   1.0000   1.0000   1.0000   1.0000
-## Pos Pred Value         1.0000   1.0000   1.0000   1.0000   1.0000
-## Neg Pred Value         1.0000   1.0000   1.0000   1.0000   1.0000
-## Prevalence             0.2843   0.1935   0.1744   0.1639   0.1838
-## Detection Rate         0.2843   0.1935   0.1744   0.1639   0.1838
-## Detection Prevalence   0.2843   0.1935   0.1744   0.1639   0.1838
-## Balanced Accuracy      1.0000   1.0000   1.0000   1.0000   1.0000</code></pre>
+<div id="apply-the-model-to-the-testing-dataset" class="section level3">
+<h3>Apply the model to the testing dataset</h3>
+<p>Use the confusion matrix to crossvalidate the results:</p>
 <pre class="r"><code>testingPred &lt;- predict(fit.model, testing)
 confusionMatrix(testingPred, testing$classe)</code></pre>
 <pre><code>## Confusion Matrix and Statistics
@@ -258,209 +301,14 @@ confusionMatrix(testingPred, testing$classe)</code></pre>
 ## Detection Rate         0.2845   0.1927   0.1723   0.1616   0.1835
 ## Detection Prevalence   0.2850   0.1946   0.1749   0.1619   0.1837
 ## Balanced Accuracy      0.9996   0.9966   0.9926   0.9931   0.9990</code></pre>
+<p>Accuracy is above 99%, looks like a usable model for predicting outcomes.</p>
 </div>
-<div id="display-model-errorrate" class="section level2">
-<h2>Display model &amp; errorrate</h2>
-<p>Di</p>
-<pre class="r"><code>fit.model</code></pre>
-<pre><code>## Random Forest 
-## 
-## 13737 samples
-##    52 predictor
-##     5 classes: 'A', 'B', 'C', 'D', 'E' 
-## 
-## No pre-processing
-## Resampling: Bootstrapped (25 reps) 
-## Summary of sample sizes: 13737, 13737, 13737, 13737, 13737, 13737, ... 
-## Resampling results across tuning parameters:
-## 
-##   mtry  Accuracy   Kappa      Accuracy SD  Kappa SD   
-##    2    0.9877924  0.9845529  0.001779935  0.002255420
-##   27    0.9877493  0.9844991  0.001480804  0.001878527
-##   52    0.9780122  0.9721800  0.004208649  0.005317716
-## 
-## Accuracy was used to select the optimal model using  the largest value.
-## The final value used for the model was mtry = 2.</code></pre>
-<p>Estimate of the errorrate appears to be less than 1%….</p>
-</div>
-<div id="predict-outcomes" class="section level2">
-<h2>Predict Outcomes</h2>
+<div id="predict-outcomes" class="section level3">
+<h3>Predict Outcomes</h3>
+<p>Prediction of the outcomes for “pml-testing.csv” using the model:</p>
 <pre class="r"><code>predictingPred &lt;- predict(fit.model, predicting)
-testingPred</code></pre>
-<pre><code>##    [1] A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A
-##   [35] A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A
-##   [69] A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A
-##  [103] A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A
-##  [137] A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A
-##  [171] A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A
-##  [205] A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A
-##  [239] A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A
-##  [273] A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A
-##  [307] A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A
-##  [341] A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A
-##  [375] A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A
-##  [409] A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A
-##  [443] A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A
-##  [477] A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A
-##  [511] A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A
-##  [545] A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A
-##  [579] A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A
-##  [613] A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A
-##  [647] A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A
-##  [681] A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A
-##  [715] A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A
-##  [749] A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A
-##  [783] A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A
-##  [817] A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A
-##  [851] A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A
-##  [885] A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A
-##  [919] A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A
-##  [953] A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A
-##  [987] A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A
-## [1021] A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A
-## [1055] A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A
-## [1089] A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A
-## [1123] A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A
-## [1157] A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A
-## [1191] A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A
-## [1225] A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A
-## [1259] A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A
-## [1293] A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A
-## [1327] A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A
-## [1361] A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A
-## [1395] A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A
-## [1429] A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A
-## [1463] A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A
-## [1497] A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A
-## [1531] A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A
-## [1565] A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A
-## [1599] A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A
-## [1633] A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A
-## [1667] A A A A A A A A B B B B B B B B B B B B B B B B B B B B B B B B B B
-## [1701] B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B
-## [1735] B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B
-## [1769] B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B
-## [1803] B B B B B B B B B B B B B B B B B A B B B B B B B B B B B B B B B B
-## [1837] B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B
-## [1871] B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B
-## [1905] B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B
-## [1939] B B B B B B B B B B B B B A B B B B B B B B B B B B B B B B B B B B
-## [1973] B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B
-## [2007] B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B
-## [2041] B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B
-## [2075] B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B
-## [2109] B B B B B B B B B B B B B B B B B B B B B B B B C B B B B B B B B B
-## [2143] B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B
-## [2177] B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B
-## [2211] B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B
-## [2245] B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B
-## [2279] B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B
-## [2313] B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B
-## [2347] B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B
-## [2381] B B B B B B B A B B B B B B B B B B B B B B B B B B B B B B B B B B
-## [2415] B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B
-## [2449] B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B
-## [2483] B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B
-## [2517] B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B
-## [2551] B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B
-## [2585] B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B
-## [2619] B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B
-## [2653] B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B
-## [2687] B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B
-## [2721] B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B
-## [2755] B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B B
-## [2789] B B B B B B B C B B B B B B B B B B B B B B B B B C C C C C C C C C
-## [2823] B C C C C C C C C B C C C C C C C C C C C C C C C C C C C C C C C C
-## [2857] C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C
-## [2891] C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C
-## [2925] C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C
-## [2959] C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C
-## [2993] C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C
-## [3027] C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C
-## [3061] C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C
-## [3095] C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C
-## [3129] C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C
-## [3163] C C C C C C C C C C C C C C C C C C C C C C C C B B B B C C C C C C
-## [3197] C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C
-## [3231] C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C
-## [3265] C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C
-## [3299] C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C
-## [3333] C C C C C C C C C C C C C C C C C C C C C C B B B C C C C C C C C C
-## [3367] C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C
-## [3401] C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C
-## [3435] C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C
-## [3469] C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C
-## [3503] C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C
-## [3537] C C C C D C C C C C C C C C C C C C C C C C C C C C C C C C C C C C
-## [3571] C C C C C C C C C C C C C C C C C C B B C C C C C C C C C C C C C C
-## [3605] C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C
-## [3639] C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C
-## [3673] C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C
-## [3707] C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C
-## [3741] C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C
-## [3775] C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C
-## [3809] C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C D D D
-## [3843] D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D
-## [3877] D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D
-## [3911] D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D
-## [3945] D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D
-## [3979] D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D
-## [4013] D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D
-## [4047] D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D
-## [4081] D D D D E D D D D D D D D D D D D D D D D D D D D D D D D D D D D D
-## [4115] D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D
-## [4149] D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D
-## [4183] D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D
-## [4217] D D D D C C D C C D D D D D D D D D D D D D D D D D D D D D D D D D
-## [4251] D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D
-## [4285] D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D
-## [4319] D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D
-## [4353] D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D
-## [4387] D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D
-## [4421] D D D D D D D D D D D D D D D D D D D D D D D C D D D D D D D D D D
-## [4455] D D D D D D D D C D D D D D D D D D D D D D D D D D D D D D D D D D
-## [4489] D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D
-## [4523] D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D
-## [4557] D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D
-## [4591] D D D D D D D C C C C C C D D D D D D D D D D D D D D D D D D D D D
-## [4625] D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D
-## [4659] D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D
-## [4693] D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D
-## [4727] D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D
-## [4761] D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D D
-## [4795] D D D D D D D D D E E E E E E E E E E E E E E E E C E E E E E E E E
-## [4829] E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E
-## [4863] E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E
-## [4897] E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E
-## [4931] E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E
-## [4965] E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E
-## [4999] E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E
-## [5033] E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E
-## [5067] E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E
-## [5101] E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E
-## [5135] E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E
-## [5169] E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E
-## [5203] E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E
-## [5237] E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E
-## [5271] E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E
-## [5305] E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E
-## [5339] E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E
-## [5373] E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E
-## [5407] E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E
-## [5441] E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E
-## [5475] E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E
-## [5509] E E E E E E E E E E D E E E E E E E E E E E E E E E E E E E E E E E
-## [5543] E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E
-## [5577] E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E
-## [5611] E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E
-## [5645] E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E
-## [5679] E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E
-## [5713] E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E
-## [5747] E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E
-## [5781] E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E
-## [5815] E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E
-## [5849] E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E E
-## [5883] E E E
+predictingPred</code></pre>
+<pre><code>##  [1] B A B A A E D B A A B C B A E E A B B B
 ## Levels: A B C D E</code></pre>
 </div>
 </div>

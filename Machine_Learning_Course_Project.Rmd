@@ -6,7 +6,7 @@ output: html_document
 ---
 # Summary
 
-The goal of this project is to build a model that predicts the manner in which persons performed barbell lifts, based on data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. The model is built using the random forest algorithm. Rationale for using RF was to test the claim that _"Random forests are usually one of the two top performing algorithms along with boosting in prediction contests"_; I wanted to see how well this algorithm actually performs. Cross validation was done by splitting pml-training.csv into a training- and test set. The model was built on the training set and evaluated againts the test set using confusionMatrix. ConfusionMatrix will produce the accuracy of the final model and the out of sample error.
+The goal of this project is to build a model that predicts the manner in which persons performed barbell lifts, based on data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. The model is built using the random forest algorithm. Rationale for using RF was to test the claim that _"Random forests are usually one of the two top performing algorithms along with boosting in prediction contests"_; I wanted to see how well this algorithm actually performs. Cross validation was done by splitting pml-training.csv into a training- and test set. The model was built on the training set and evaluated against the test set using confusionMatrix. ConfusionMatrix will produce the accuracy of the final model and the out of sample error.
 
 # Data
 First things first: clean the environment, set seed and load libraries
@@ -15,13 +15,12 @@ dev.off()
 rm(list=ls())
 library(ggplot2)
 library(caret)
-library(data.table) 
 library(parallel)
 library(doParallel)
 set.seed(11)
 ```
 ### Load the data
-Load the test- and trainingdata directly from internet. Load the data into data frames as caret does not handle data tables wel.. While loading the data with read.csv, the values _'NA'_, _''_ and _'#DIV/0!'_ are treated as NA values. 
+Load the test- and trainingdata directly from internet. Load the data into data frames as caret does not handle data tables well.. While loading the data with read.csv, the values _'NA'_, _''_ and _'#DIV/0!'_ are treated as NA values. 
 ```{r}
 ## set the file URLs
 fileUrl.training<-"https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
@@ -29,7 +28,6 @@ fileUrl.testing<-"https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testin
 ## check if the download files exist. Download only if they don't exist 
 if(!file.exists("./pml-training.csv")) {download.file(fileUrl.training,destfile="pml-training.csv",method="curl")}
 if(!file.exists("./pml-testing.csv")) {download.file(fileUrl.testing,destfile="pml-testing.csv", method="curl")}
-
 ## Load the data into data frames
 df.training <- read.csv(file="pml-training.csv", header=TRUE, as.is = TRUE, stringsAsFactors = FALSE, sep=',', na.strings=c('NA','','#DIV/0!'))
 df.testing <- read.csv(file="pml-testing.csv", header=TRUE, as.is = TRUE, stringsAsFactors = FALSE, sep=',', na.strings=c('NA','','#DIV/0!'))
@@ -66,7 +64,7 @@ df.training[,integer.cols]<-sapply(df.training[,integer.cols],as.numeric)
 df.testing[,integer.cols]<-sapply(df.testing[,integer.cols],as.numeric)
 ## Make a list of numeric columns, it will be used later on..
 numeric.cols <- which(lapply(df.training, class) %in% "numeric")
-## Check for NZV
+## 5. Check for NZV
 nzv.testing <- nearZeroVar(df.training, saveMetrics=TRUE)
 nzv.testing
 ```
@@ -99,19 +97,19 @@ predicting$classe <- as.factor(predicting$classe)
 ```
 
 ### Train the model
-Set the parameters for calling _train_
+Set the parameters for calling _"train"_
 ```{r}
 trControl <- trainControl(classProbs=TRUE,
                      savePredictions=TRUE,
                      allowParallel=TRUE)
 method <- "rf"
 ```
-
+Fit the model
 ```{r}
 ## Create a cluster
 cluster <- makeCluster(detectCores() - 1)
 registerDoParallel(cluster)
-## 
+## Fit the model
 fit.model <- train(classe ~ ., data=training, method=method,trControl = trControl)
 stopCluster(cluster)
 ```
